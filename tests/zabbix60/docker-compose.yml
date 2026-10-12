@@ -1,0 +1,32 @@
+# Disposable Zabbix 6.0 LTS stand for compatibility tests.
+#   docker compose -f tests/zabbix60/docker-compose.yml up -d
+#   API: http://127.0.0.1:8060/api_jsonrpc.php  (Admin / zabbix)
+name: zaa-zabbix60
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: zabbix
+      POSTGRES_DB: zabbix
+    tmpfs: [/var/lib/postgresql/data]
+  server:
+    image: zabbix/zabbix-server-pgsql:alpine-6.0-latest
+    environment:
+      DB_SERVER_HOST: db
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: zabbix
+      POSTGRES_DB: zabbix
+      ZBX_CACHEUPDATEFREQUENCY: "5"
+    depends_on: [db]
+  web:
+    image: zabbix/zabbix-web-nginx-pgsql:alpine-6.0-latest
+    environment:
+      ZBX_SERVER_HOST: server
+      DB_SERVER_HOST: db
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: zabbix
+      POSTGRES_DB: zabbix
+      PHP_TZ: UTC
+    ports: ["127.0.0.1:8060:8080"]
+    depends_on: [db, server]
