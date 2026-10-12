@@ -19,6 +19,12 @@ from .report import RENDERERS
 log = logging.getLogger("zabbix_action_audit")
 
 
+def _existing_file(value: str) -> str:
+    if not Path(value).is_file():
+        raise argparse.ArgumentTypeError(f"файл не найден: {value}")
+    return value
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="zabbix-action-audit",
                                 description="Аудит действий триггеров Zabbix (6.0 LTS – 7.x)")
@@ -26,7 +32,12 @@ def build_parser() -> argparse.ArgumentParser:
     src.add_argument("--secrets", default="secrets.txt", help="файл с URL и токеном (по умолчанию secrets.txt)")
     src.add_argument("--url", help="URL фронтенда Zabbix или api_jsonrpc.php")
     src.add_argument("--token", help="API-токен (лучше через ZABBIX_TOKEN или secrets.txt)")
-    src.add_argument("--no-verify-ssl", action="store_true", help="не проверять TLS-сертификат")
+    tls = src.add_mutually_exclusive_group()
+    tls.add_argument("--no-verify-ssl", dest="verify", action="store_const", const=False,
+                     help="не проверять TLS-сертификат (также ZABBIX_VERIFY_SSL=false или "
+                          "«Zabbix verify ssl: false» в secrets.txt)")
+    tls.add_argument("--ca-bundle", dest="verify", metavar="FILE", type=_existing_file,
+                     help="проверять сертификат по своему CA (PEM), например для внутреннего УЦ")
     src.add_argument("--timeout", type=float, default=120, help="таймаут запроса к API, с")
     src.add_argument("--dump-snapshot", metavar="FILE", help="сохранить выгрузку API в файл")
     src.add_argument("--from-snapshot", metavar="FILE", help="аудит по ранее сохранённой выгрузке, без API")
@@ -67,8 +78,8 @@ def run(args: argparse.Namespace) -> int:
     if args.from_snapshot:
         raw = loader.load(args.from_snapshot)
     else:
-        settings = config.resolve(args.url, args.token, args.secrets)
-        api = ZabbixAPI(settings.url, settings.token, verify=not args.no_verify_ssl, timeout=args.timeout)
+        settings = config.resolve(args.url, args.token, args.secrets, verify=args.verify)
+        api = ZabbixAPI(settings.url, settings.token, verify=settings.verify, timeout=args.timeout)
         raw = loader.fetch_raw(api, with_problems=MODE_ACTIVE in modes)
         user = raw["meta"].get("token_user")
         if user and user.get("type") != 3:

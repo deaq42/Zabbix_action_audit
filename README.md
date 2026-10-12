@@ -22,6 +22,15 @@ zabbix-action-audit --from-snapshot snap.json -o a.html   # аудит офла�
 Подключение: `secrets.txt` (`Zabbix_url: …`, `Zabbix token: …`), переменные `ZABBIX_URL` / `ZABBIX_TOKEN`
 или `--url` / `--token`. Нужен токен Super admin: аудит только читает API.
 
+Проверка TLS-сертификата (приоритет: аргумент > переменная > файл):
+
+| Что нужно | Аргумент | Переменная | Строка в `secrets.txt` |
+|---|---|---|---|
+| не проверять сертификат | `--no-verify-ssl` | `ZABBIX_VERIFY_SSL=false` | `Zabbix verify ssl: false` |
+| проверять по своему CA | `--ca-bundle ca.pem` | `ZABBIX_VERIFY_SSL=/path/ca.pem` | `Zabbix verify ssl: /path/ca.pem` |
+
+Для внутреннего УЦ лучше указать его сертификат, чем отключать проверку.
+
 Коды возврата: `0` — нет FAIL во включённых действиях, `1` — есть FAIL, `2` — ошибка выполнения.
 
 «Не определено» означает, что результат зависит от того, что известно только в момент события: период времени,

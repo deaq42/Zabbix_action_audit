@@ -14,6 +14,7 @@ import re
 from typing import Any
 
 import requests
+import urllib3
 
 log = logging.getLogger(__name__)
 
@@ -42,12 +43,17 @@ def frontend_base(url: str) -> str:
 
 
 class ZabbixAPI:
-    def __init__(self, url: str, token: str | None = None, *, verify: bool = True, timeout: float = 120):
+    def __init__(self, url: str, token: str | None = None, *, verify: bool | str = True, timeout: float = 120):
+        """``verify``: True — system CAs, False — no TLS verification, str — path to a CA bundle."""
         self.url = api_endpoint(url)
         self.token = token
         self.timeout = timeout
         self.session = requests.Session()
         self.session.verify = verify
+        if verify is False and self.url.startswith("https://"):
+            # one explicit warning instead of an InsecureRequestWarning on every request
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            log.warning("Проверка TLS-сертификата %s отключена", self.url)
         self.session.headers["Content-Type"] = "application/json-rpc"
         self._ids = itertools.count(1)
         self._version: tuple[int, int, int] | None = None

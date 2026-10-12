@@ -43,6 +43,7 @@
 ### FR-1. Подключение
 - URL и API-токен читаются из `secrets.txt` (формат `Zabbix_url: …` / `Zabbix token: …`), с возможностью переопределения через переменные окружения `ZABBIX_URL`, `ZABBIX_TOKEN` и аргументы CLI.
 - Авторизация — `Authorization: Bearer <token>`. Токен в логах и отчётах не выводится.
+- Проверка TLS: по умолчанию системные CA; `--no-verify-ssl` / `ZABBIX_VERIFY_SSL=false` / `Zabbix verify ssl: false` — отключить (одно предупреждение в лог вместо `InsecureRequestWarning` на каждый запрос); `--ca-bundle FILE` или путь в тех же переменной/строке — свой CA.
 - Пользователь токена должен быть Super admin (иначе API вернёт неполные данные) — проверяется при старте, иначе предупреждение.
 
 ### FR-2. Определение проблем, под которые попадает действие
@@ -125,7 +126,7 @@ zabbix-action-audit [--secrets secrets.txt] [--url URL] [--token TOKEN]
                     [--skip-disabled] [--uncovered] [--tz ZONE]
                     [--format text|json|html] [--output FILE]
                     [--dump-snapshot FILE | --from-snapshot FILE]
-                    [--no-verify-ssl] [-v]
+                    [--no-verify-ssl | --ca-bundle FILE] [-v]
 ```
 `--dump-snapshot` / `--from-snapshot` — сохранить/использовать выгрузку API, чтобы проводить аудит офлайн и воспроизводить баги.
 

@@ -16,7 +16,7 @@ import pytest
 import requests
 
 from zabbix_action_audit.api import ZabbixAPI
-from zabbix_action_audit.config import read_secrets
+from zabbix_action_audit.config import parse_verify, read_secrets
 
 from .scenario import Scenario, leftover_cleanup
 
@@ -27,7 +27,8 @@ def _stands() -> dict[str, dict]:
     stands = {}
     secrets = read_secrets(ROOT / "secrets.txt")
     if secrets.get("url") and secrets.get("token"):
-        stands["local"] = {"url": secrets["url"], "token": secrets["token"]}
+        stands["local"] = {"url": secrets["url"], "token": secrets["token"],
+                           "verify": parse_verify(secrets.get("verify_ssl", "true"))}
     stands["zbx60"] = {"url": os.environ.get("ZAA_ZBX60_URL", "http://127.0.0.1:8060/"), "login": ("Admin", "zabbix")}
     wanted = os.environ.get("ZAA_STANDS")
     if wanted:
@@ -43,7 +44,7 @@ STANDS = _stands()
 
 def connect(name: str) -> ZabbixAPI:
     cfg = STANDS[name]
-    api = ZabbixAPI(cfg["url"], cfg.get("token"), timeout=30)
+    api = ZabbixAPI(cfg["url"], cfg.get("token"), verify=cfg.get("verify", True), timeout=30)
     try:
         api.version
     except requests.RequestException as e:
