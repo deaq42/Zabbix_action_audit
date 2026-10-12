@@ -152,3 +152,14 @@ def test_api_auth_style_depends_on_version(monkeypatch):
         assert ("auth" in call[0]) is (not bearer)
     assert api_endpoint("http://z/") == "http://z/api_jsonrpc.php"
     assert parse_version("7.0.0rc1") == (7, 0, 0)
+
+
+def test_candidates_limited_to_referenced():
+    b, i = scenario()
+    other = b.host("unrelated", [b.group("Other")])
+    t_other = b.trigger([other], "Unrelated")
+    res = run(b, action_filter=["Main"])
+    assert set(res.candidates["potential"]) == {i["t_hi"], i["t_lo"]}
+    assert t_other not in render_html(res)
+    res = run(b, action_filter=["Main"], uncovered=True)
+    assert set(res.uncovered["active"]) <= set(res.candidates["active"])

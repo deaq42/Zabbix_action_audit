@@ -206,11 +206,18 @@ class Auditor:
                     (done[a.actionid].get(c.key, False) if a.actionid in done else self._match(a, c)) is False
                     for a in self.snap.actions if a.actionid in senders)]
 
+        # only candidates the report refers to: the rest of the installation would bloat the output
+        used: dict[str, set[str]] = {mode: set(uncov.get(mode, ())) for mode in modes}
+        for report in reports:
+            for mode, m in report.modes.items():
+                used[mode].update(m.matched, m.undecided)
+
         meta = dict(self.snap.meta)
         meta["audited"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
         return AuditResult(
             meta=meta, modes=modes, actions=reports,
-            candidates={mode: {c.key: self._summary(c) for c in candidates[mode]} for mode in modes},
+            candidates={mode: {c.key: self._summary(c) for c in candidates[mode] if c.key in used[mode]}
+                        for mode in modes},
             uncovered=uncov,
             descriptions=dict(DESCRIPTIONS),
         )
