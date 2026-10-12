@@ -58,7 +58,8 @@ def build_parser() -> argparse.ArgumentParser:
     out.add_argument("--format", choices=sorted(RENDERERS), default=None,
                      help="text, json или html (по умолчанию html при --output *.html, иначе text)")
     out.add_argument("-o", "--output", help="файл отчёта (по умолчанию stdout)")
-    p.add_argument("-v", "--verbose", action="count", default=0)
+    p.add_argument("-v", "--verbose", action="count", default=0,
+                   help="-v — ход загрузки (хосты, триггеры, порции), -vv — каждый запрос к API с временем и размером")
     return p
 
 
