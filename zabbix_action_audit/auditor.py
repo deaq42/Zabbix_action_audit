@@ -203,7 +203,7 @@ class Auditor:
             for mode in modes:
                 done = matches[mode]
                 uncov[mode] = [c.key for c in candidates[mode] if all(
-                    (done[a.actionid][c.key] if a.actionid in done else self._match(a, c)) is False
+                    (done[a.actionid].get(c.key, False) if a.actionid in done else self._match(a, c)) is False
                     for a in self.snap.actions if a.actionid in senders)]
 
         meta = dict(self.snap.meta)
@@ -332,7 +332,10 @@ class Auditor:
             mr = ModeReport(mode)
             results: dict[str, bool | None] = {}
             matched: list[Candidate] = []
+            required = self.evaluator.required_hosts(action) if formula_ok else None
             for cand in cands:
+                if required is not None and required.isdisjoint(cand.hostids):
+                    continue  # can not match: results default to False
                 res = self.evaluator.action(action, cand) if formula_ok else None
                 value = res.result if res else None
                 results[cand.key] = value
@@ -422,17 +425,25 @@ class Auditor:
         rr.findings += self._condition_access(action, user)
         rr.findings += self._severity_coverage(op, user, allowed)
 
+        # Without tag filters the outcome depends only on the hosts, severity and time of the candidate,
+        # so candidates sharing them are evaluated once.
+        tag_filtered = any(g.tag_filters for gid in user.usrgrpids if (g := self.snap.usergroups.get(gid)))
+        memo: dict[tuple, OutcomeGroup] = {}
         groups: dict[tuple[str, ...], OutcomeGroup] = {}
         for cand in matched:
-            codes, details = self._pair(op, user, cand)
-            key = tuple(sorted(set(codes)))
-            g = groups.get(key)
+            sig = (cand.key,) if tag_filtered else (tuple(cand.hostids), cand.severity, cand.clock)
+            g = memo.get(sig)
             if g is None:
-                g = groups[key] = OutcomeGroup(level_of(key), list(key), [], [])
+                codes, details = self._pair(op, user, cand)
+                key = tuple(sorted(set(codes)))
+                g = groups.get(key)
+                if g is None:
+                    g = groups[key] = OutcomeGroup(level_of(key), list(key), [], [])
+                for d in details:
+                    if d not in g.details and len(g.details) < 30:
+                        g.details.append(d)
+                memo[sig] = g
             g.candidates.append(cand.key)
-            for d in details:
-                if d not in g.details and len(g.details) < 30:
-                    g.details.append(d)
         rr.outcomes = sorted(groups.values(), key=lambda g: (-LEVEL_ORDER[g.level], -len(g.candidates)))
         rr.counts = {lvl: sum(len(g.candidates) for g in rr.outcomes if g.level == lvl) for lvl in LEVEL_ORDER}
         return rr
@@ -466,8 +477,8 @@ class Auditor:
                     out.append(finding("COND_HOST_NOT_ACCESSIBLE", f"Нет прав на хост «{self.snap.host_label(c.value)}» "
                                                                    f"из условия {c.formulaid}"))
             elif c.conditiontype == C.COND_HOST_GROUP and c.value in self.snap.hostgroups:
-                groups = self.snap.nested_groupids(c.value)
-                hosts = [h for h in self.snap.hosts.values() if set(h.groupids) & groups]
+                groups = self.evaluator.nested(c.value)
+                hosts = [self.snap.hosts[h] for h in self.evaluator.hosts_for(c)]
                 readable = [h for h in hosts if self.perms.can_read_host(user.userid, h.hostid)]
                 if len(readable) < len(hosts) or not any(self.perms.can_read_group(user.userid, g) for g in groups):
                     out.append(finding("COND_HOST_NOT_ACCESSIBLE",

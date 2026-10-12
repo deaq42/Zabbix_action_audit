@@ -114,10 +114,10 @@ h2 { font-size: 16px; margin: 28px 0 8px; }
       {% if a.findings %}<ul class="findings">{% for f in a.findings %}<li class="f" data-level="{{ f.level }}"><span class="badge {{ f.level }}">{{ f.level }}</span> {{ f.message }} <code class="muted">{{ f.code }}</code></li>{% endfor %}</ul>{% endif %}
 
       {% for mode, m in a.modes.items() %}
-      <div class="mode-only" data-mode="{{ mode }}">
+      <div class="mode-only" data-mode="{{ mode }}" data-undecided="{{ m.undecided|tojson|forceescape }}">
         {% if m.findings %}<ul class="findings">{% for f in m.findings %}<li class="f" data-level="{{ f.level }}"><span class="badge {{ f.level }}">{{ f.level }}</span> {{ f.message }}</li>{% endfor %}</ul>{% endif %}
         {% if m.matched or m.undecided %}
-        <details class="lazy" data-mode="{{ mode }}" data-keys="{{ (m.matched + (m.undecided.keys()|list))|join(',') }}" data-undecided="{{ m.undecided|tojson|forceescape }}">
+        <details class="lazy" data-mode="{{ mode }}" data-list="{{ ref(m.matched + (m.undecided.keys()|list)) }}">
           <summary>Проблемы, под которые попадает действие: {{ m.matched|length }}{% if m.undecided %} <span class="badge UNK">+ {{ m.undecided|length }} не определено</span>{% endif %}</summary>
           <div class="body"></div>
         </details>
@@ -137,7 +137,7 @@ h2 { font-size: 16px; margin: 28px 0 8px; }
               <div class="body">
                 {% if rc.findings %}<ul class="findings">{% for f in rc.findings %}<li class="f" data-level="{{ f.level }}"><span class="badge {{ f.level }}">{{ f.level }}</span> {{ f.message }}</li>{% endfor %}</ul>{% endif %}
                 {% for g in rc.outcomes %}
-                <details class="lazy f" data-level="{{ g.level }}" data-mode="{{ mode }}" data-keys="{{ g.candidates|join(',') }}" data-undecided="{{ m.undecided|tojson|forceescape }}">
+                <details class="lazy f" data-level="{{ g.level }}" data-mode="{{ mode }}" data-list="{{ ref(g.candidates) }}">
                   <summary><span class="badge {{ g.level }}">{{ g.level }}</span> {{ g.candidates|length }} пробл.
                     {% for code in g.codes %}<code>{{ code }}</code> {% endfor %}
                     {% if not g.codes %}<span class="muted">уведомление будет доставлено</span>{% endif %}</summary>
@@ -161,7 +161,7 @@ h2 { font-size: 16px; margin: 28px 0 8px; }
   {% if r.uncovered %}
   <h2>Не подпадают ни под одно включённое действие с отправкой сообщений</h2>
   {% for mode, keys in r.uncovered.items() %}
-  <details class="lazy mode-only" data-mode="{{ mode }}" data-keys="{{ keys|join(',') }}" data-undecided="{}">
+  <details class="lazy mode-only" data-mode="{{ mode }}" data-list="{{ ref(keys) }}" data-undecided="{}">
     <summary>{{ mode_titles[mode] }}: {{ keys|length }}</summary>
     <div class="body"></div>
   </details>
@@ -175,9 +175,12 @@ h2 { font-size: 16px; margin: 28px 0 8px; }
 </main>
 
 <script id="candidates" type="application/json">{{ r.candidates|tojson }}</script>
+<script id="lists" type="application/json"><!--KEY_LISTS--></script>
 <script>
 (function () {
   const CANDS = JSON.parse(document.getElementById("candidates").textContent);
+  const LISTS = JSON.parse(document.getElementById("lists").textContent);
+  const keysOf = el => LISTS[+el.dataset.list] || [];
   const SEV = {{ severities|tojson }};
   let mode = {{ r.modes[0]|tojson if r.modes else '""' }};
   const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -186,8 +189,10 @@ h2 { font-size: 16px; margin: 28px 0 8px; }
     const body = el.querySelector(":scope > .body");
     if (el.dataset.rendered) return;
     el.dataset.rendered = "1";
-    const keys = el.dataset.keys ? el.dataset.keys.split(",") : [];
-    const und = JSON.parse(el.dataset.undecided || "{}");
+    const keys = keysOf(el);
+    const holder = el.closest("[data-undecided]");
+    if (holder && !holder._und) holder._und = JSON.parse(holder.dataset.undecided || "{}");
+    const und = holder ? holder._und : {};
     const pool = CANDS[el.dataset.mode] || {};
     const rows = keys.map(k => pool[k]).filter(Boolean)
       .sort((a, b) => b.severity - a.severity || a.name.localeCompare(b.name));
@@ -217,7 +222,7 @@ h2 { font-size: 16px; margin: 28px 0 8px; }
       if (visible && q) {
         const hay = a.dataset.search + " " + [...a.querySelectorAll(".rcpt")].map(r => r.dataset.search).join(" ")
           + " " + [...a.querySelectorAll("details.lazy[data-mode='" + mode + "']")].slice(0, 1).map(d =>
-            d.dataset.keys.split(",").map(k => { const c = (CANDS[mode] || {})[k]; return c ? (c.name + " " + c.hosts.join(" ")).toLowerCase() : ""; }).join(" ")).join(" ");
+            keysOf(d).map(k => { const c = (CANDS[mode] || {})[k]; return c ? (c.name + " " + c.hosts.join(" ")).toLowerCase() : ""; }).join(" ")).join(" ");
         visible = hay.includes(q);
       }
       a.classList.toggle("hidden", !visible);

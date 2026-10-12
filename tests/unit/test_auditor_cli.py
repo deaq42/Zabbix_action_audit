@@ -126,6 +126,8 @@ def test_api_auth_style_depends_on_version(monkeypatch):
     sent = []
 
     class Resp:
+        status_code, reason, content = 200, "OK", b""
+
         def __init__(self, result):
             self.result = result
 

@@ -39,6 +39,9 @@ def build_parser() -> argparse.ArgumentParser:
     tls.add_argument("--ca-bundle", dest="verify", metavar="FILE", type=_existing_file,
                      help="проверять сертификат по своему CA (PEM), например для внутреннего УЦ")
     src.add_argument("--timeout", type=float, default=120, help="таймаут запроса к API, с")
+    src.add_argument("--chunk-size", type=int, default=loader.DEFAULT_CHUNK, metavar="N",
+                     help=f"хостов в одном тяжёлом запросе (по умолчанию {loader.DEFAULT_CHUNK}); при ошибке 5xx "
+                          "или таймауте порция автоматически делится пополам")
     src.add_argument("--dump-snapshot", metavar="FILE", help="сохранить выгрузку API в файл")
     src.add_argument("--from-snapshot", metavar="FILE", help="аудит по ранее сохранённой выгрузке, без API")
 
@@ -80,7 +83,9 @@ def run(args: argparse.Namespace) -> int:
     else:
         settings = config.resolve(args.url, args.token, args.secrets, verify=args.verify)
         api = ZabbixAPI(settings.url, settings.token, verify=settings.verify, timeout=args.timeout)
-        raw = loader.fetch_raw(api, with_problems=MODE_ACTIVE in modes)
+        # with --uncovered every trigger is needed, otherwise only hosts the selected actions can match
+        raw = loader.fetch_raw(api, with_problems=MODE_ACTIVE in modes, chunk=args.chunk_size,
+                               action_filter=None if args.uncovered else args.action)
         user = raw["meta"].get("token_user")
         if user and user.get("type") != 3:
             log.warning("Учётная запись %s не Super admin — часть объектов может быть не видна", user.get("username"))

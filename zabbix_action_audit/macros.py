@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import cached_property
 
 from .model import Snapshot
 
@@ -16,15 +17,15 @@ _USER_MACRO = re.compile(r'^\{\$([A-Z0-9_.]+)(?::(.*))?\}$', re.S)
 _HOST_MACRO = re.compile(r"^\{(HOST\.HOST|HOST\.NAME|HOSTNAME)(\d?)\}$")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class Expanded:
     segments: tuple[str | None, ...]  # None = unresolved macro
 
-    @property
+    @cached_property
     def exact(self) -> bool:
         return None not in self.segments
 
-    @property
+    @cached_property
     def text(self) -> str:
         """Display form; unresolved macros are shown as «?»."""
         return "".join("«?»" if s is None else s for s in self.segments)

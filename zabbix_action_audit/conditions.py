@@ -110,10 +110,7 @@ class ConditionEvaluator:
         self.snap = snap
         self.tz = tz
         self.macros = MacroResolver(snap)
-
-    # -- single condition --------------------------------------------------
-    def condition(self, c: Condition, cand: Candidate) -> ConditionResult:
-        fn = {
+        self._dispatch = {
             C.COND_HOST_GROUP: self._host_group,
             C.COND_HOST: self._host,
             C.COND_TRIGGER: self._trigger,
@@ -124,7 +121,50 @@ class ConditionEvaluator:
             C.COND_SUPPRESSED: self._suppressed,
             C.COND_EVENT_TAG: self._tag,
             C.COND_EVENT_TAG_VALUE: self._tag_value,
-        }.get(c.conditiontype)
+        }
+        self._nested: dict[str, set[str]] = {}
+        self._group_hosts: dict[str, set[str]] = {}
+
+    def nested(self, groupid: str) -> set[str]:
+        if groupid not in self._nested:
+            self._nested[groupid] = self.snap.nested_groupids(groupid)
+        return self._nested[groupid]
+
+    def required_hosts(self, action: Action) -> set[str] | None:
+        """Hosts a candidate must have one of to possibly match, from AND-ed "=" host/host group conditions;
+        None when the filter does not limit hosts. Used to skip candidates that can not match."""
+        if action.evaltype not in (C.EVALTYPE_AND_OR, C.EVALTYPE_AND):
+            return None
+        required: set[str] | None = None
+        for ctype in (C.COND_HOST_GROUP, C.COND_HOST):
+            cs = [c for c in action.conditions if c.conditiontype == ctype]
+            eq = [c for c in cs if c.operator == C.OP_EQUAL]
+            if not eq:
+                continue
+            if action.evaltype == C.EVALTYPE_AND_OR:
+                if len(eq) != len(cs):
+                    continue
+                parts = [self.hosts_for(c) for c in eq]
+                sets = [set().union(*parts)]  # OR inside the type
+            else:
+                sets = [self.hosts_for(c) for c in eq]  # every condition must hold
+            for hosts in sets:
+                required = hosts if required is None else required & hosts
+        return required
+
+    def hosts_for(self, c: Condition) -> set[str]:
+        """Hosts satisfying a host / host group "=" condition (host groups include nested ones)."""
+        if c.conditiontype == C.COND_HOST:
+            return {c.value}
+        if c.value not in self._group_hosts:
+            groups = self.nested(c.value)
+            self._group_hosts[c.value] = {h.hostid for h in self.snap.hosts.values()
+                                          if not groups.isdisjoint(h.groupids)}
+        return self._group_hosts[c.value]
+
+    # -- single condition --------------------------------------------------
+    def condition(self, c: Condition, cand: Candidate) -> ConditionResult:
+        fn = self._dispatch.get(c.conditiontype)
         if fn is None:
             return ConditionResult(c, None, f"тип условия {c.conditiontype} не поддерживается")
         result = fn(c, cand)
@@ -141,8 +181,8 @@ class ConditionEvaluator:
         return None
 
     def _host_group(self, c: Condition, cand: Candidate):
-        groups = self.snap.nested_groupids(c.value)
-        present = any(set(self.snap.hosts[h].groupids) & groups for h in cand.hostids if h in self.snap.hosts)
+        groups = self.nested(c.value)
+        present = any(not groups.isdisjoint(self.snap.hosts[h].groupids) for h in cand.hostids if h in self.snap.hosts)
         return self._eq(c, present)
 
     def _host(self, c: Condition, cand: Candidate):

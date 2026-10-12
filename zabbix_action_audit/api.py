@@ -11,6 +11,7 @@ from __future__ import annotations
 import itertools
 import logging
 import re
+import time
 from typing import Any
 
 import requests
@@ -23,6 +24,15 @@ class ZabbixAPIError(Exception):
     def __init__(self, method: str, code: int, message: str, data: str = ""):
         self.method, self.code, self.message, self.data = method, code, message, data
         super().__init__(f"{method}: {message} {data}".strip())
+
+
+class ZabbixTransportError(Exception):
+    """The frontend failed to answer (HTTP 5xx, timeout, truncated body) — usually PHP memory_limit or
+    max_execution_time on a request that returns too much data."""
+
+    def __init__(self, method: str, reason: str):
+        self.method, self.reason = method, reason
+        super().__init__(f"{method}: {reason}")
 
 
 def parse_version(text: str) -> tuple[int, int, int]:
@@ -86,11 +96,28 @@ class ZabbixAPI:
                 headers["Authorization"] = f"Bearer {self.token}"
             else:
                 payload["auth"] = self.token
-        log.debug("-> %s", method)
-        resp = self.session.post(self.url, json=payload, headers=headers, timeout=self.timeout)
+        log.debug("-> %s %s", method, _describe(params))
+        started = time.monotonic()
+        try:
+            resp = self.session.post(self.url, json=payload, headers=headers, timeout=self.timeout)
+        except requests.Timeout as e:
+            raise ZabbixTransportError(method, f"нет ответа за {self.timeout:g} с") from e
+        if resp.status_code >= 500:
+            raise ZabbixTransportError(method, f"HTTP {resp.status_code} {resp.reason}")
         resp.raise_for_status()
-        body = resp.json()
+        try:
+            body = resp.json()
+        except ValueError as e:
+            raise ZabbixTransportError(method, "ответ не является JSON (обрезан или ошибка PHP)") from e
+        log.debug("<- %s %.1fs %d KB", method, time.monotonic() - started, len(resp.content) // 1024)
         if "error" in body:
             err = body["error"]
             raise ZabbixAPIError(method, err.get("code", 0), err.get("message", ""), err.get("data", ""))
         return body["result"]
+
+
+def _describe(params: Any) -> str:
+    """Short description of request parameters for debug logs (sizes of id lists instead of the ids)."""
+    if not isinstance(params, dict):
+        return ""
+    return " ".join(f"{k}=[{len(v)}]" for k, v in params.items() if isinstance(v, list) and k.endswith("ids"))
