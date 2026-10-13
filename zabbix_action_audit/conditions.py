@@ -221,9 +221,17 @@ class ConditionEvaluator:
         return (inside if c.operator == C.OP_IN else not inside), ""
 
     def _suppressed(self, c: Condition, cand: Candidate):
-        if cand.suppressed is None:
-            return None, "зависит от обслуживания на момент события"
-        return cand.suppressed if c.operator == C.OP_YES else not cand.suppressed
+        if cand.suppressed is not None:
+            return cand.suppressed if c.operator == C.OP_YES else not cand.suppressed
+        # potential mode: "not suppressed" is taken as met while no host of the trigger is in maintenance now,
+        # otherwise every trigger of such an action would be undecided; "suppressed" stays undecided because
+        # it can match during any future maintenance
+        states = [self.snap.hosts[h].in_maintenance for h in cand.hostids if h in self.snap.hosts]
+        if c.operator == C.OP_NO and states and not any(s is None or s for s in states):
+            return True
+        if any(states):
+            return None, "хост сейчас на обслуживании"
+        return None, "зависит от обслуживания на момент события"
 
     def _tag_match(self, exp: Expanded, op: int, value: str) -> bool | None:
         if op in (C.OP_EQUAL, C.OP_NOT_EQUAL):

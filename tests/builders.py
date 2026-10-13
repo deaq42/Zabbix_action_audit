@@ -33,10 +33,11 @@ class RawBuilder:
         return tid
 
     def host(self, name: str, groups: list[str], *, templates: list[str] | None = None, enabled: bool = True,
-             tags: list[tuple[str, str]] | None = None, inherited: list[tuple[str, str]] | None = None) -> str:
+             tags: list[tuple[str, str]] | None = None, inherited: list[tuple[str, str]] | None = None, maintenance: bool = False) -> str:
         hid = self._next()
         self.raw["hosts"].append({
             "hostid": hid, "host": name, "name": name.upper(), "status": "0" if enabled else "1",
+            "maintenance": "1" if maintenance else "0",
             "groupids": groups, "templateids": templates or [],
             "tags": [{"tag": t, "value": v} for t, v in tags or []],
             "inheritedTags": [{"tag": t, "value": v} for t, v in inherited or []],

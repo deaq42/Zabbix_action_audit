@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Аудит действий Zabbix</title>
+{% include "_style.html.j2" %}
+</head>
+<body>
+<header>
+  <h1>Аудит действий триггеров Zabbix</h1>
+  <div class="meta">Zabbix {{ r.meta.version }} · <a href="{{ r.meta.frontend }}">{{ r.meta.frontend }}</a> · данные от {{ r.meta.generated }} · отчёт {{ r.meta.audited }}
+  {% if r.meta.token_user %} · учётная запись {{ r.meta.token_user.username }}{% if r.meta.token_user.type != 3 %} <span class="badge WARN">не Super admin — данные могут быть неполными</span>{% endif %}{% endif %}</div>
+</header>
+<main>
+  <div class="tiles">
+    {% for lvl, n in summary.items() %}<div class="tile {{ lvl }}"><b>{{ n }}</b>{{ lvl }}</div>{% endfor %}
+    <div class="tile"><b>{{ r.actions|length }}</b>действий</div>
+  </div>
+  <div class="muted">Счётчики — по включённым действиям: пары «получатель × проблема» плюс находки уровня действия/операции.
+    Подробности по каждому действию — на его странице.</div>
+
+  <div class="controls">
+    {% for lvl in ["FAIL", "WARN", "INFO", "OK"] %}
+    <label><input type="checkbox" class="lvl" value="{{ lvl }}" checked> <span class="badge {{ lvl }}">{{ lvl }}</span></label>
+    {% endfor %}
+    <label><input type="checkbox" id="showDisabled" checked> отключённые действия</label>
+    <input type="search" id="q" placeholder="Поиск по имени действия или id">
+  </div>
+
+  <table class="index">
+    <thead><tr>
+      <th>Итог</th><th>Действие</th>
+      {% for m in r.modes %}<th class="num">{{ mode_titles[m] }}: подходит</th>{% endfor %}
+      <th class="num">FAIL</th><th class="num">WARN</th><th>Коды</th>
+    </tr></thead>
+    <tbody>
+    {% for row in rows %}{% set a = row.action %}
+    <tr data-level="{{ a.worst }}" data-enabled="{{ 1 if a.enabled else 0 }}" data-search="{{ (a.name ~ ' ' ~ a.actionid)|lower }}">
+      <td><span class="badge {{ a.worst }}">{{ a.worst }}</span></td>
+      <td><a href="{{ row.file }}">{{ a.name }}</a> <span class="muted">id {{ a.actionid }}</span>
+        {% if not a.enabled %}<span class="badge off">отключено</span>{% endif %}</td>
+      {% for m in r.modes %}{% set mr = a.modes.get(m) %}
+      <td class="num">{% if mr %}{{ mr.matched|length }}{% if mr.undecided %} <span class="badge UNK">+{{ mr.undecided|length }}?</span>{% endif %}{% else %}—{% endif %}</td>
+      {% endfor %}
+      <td class="num">{% if row.counts.FAIL %}<span class="badge FAIL">{{ row.counts.FAIL }}</span>{% endif %}</td>
+      <td class="num">{% if row.counts.WARN %}<span class="badge WARN">{{ row.counts.WARN }}</span>{% endif %}</td>
+      <td>{% for code in row.codes %}<code>{{ code }}</code> {% endfor %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  {% if uncovered_file %}
+  <h2>Не покрыты ни одним действием с отправкой сообщений</h2>
+  <p><a href="{{ uncovered_file }}">Список триггеров и проблем</a>
+    {% for mode, keys in r.uncovered.items() %} · {{ mode_titles[mode] }}: {{ keys|length }}{% endfor %}</p>
+  {% endif %}
+</main>
+<script>
+(function () {
+  function apply() {
+    const levels = new Set([...document.querySelectorAll(".lvl:checked")].map(i => i.value));
+    const showDisabled = document.getElementById("showDisabled").checked;
+    const q = document.getElementById("q").value.trim().toLowerCase();
+    document.querySelectorAll("table.index tbody tr").forEach(tr => {
+      const visible = levels.has(tr.dataset.level) && (showDisabled || tr.dataset.enabled === "1")
+        && (!q || tr.dataset.search.includes(q));
+      tr.classList.toggle("hidden", !visible);
+    });
+  }
+  document.querySelectorAll(".lvl, #showDisabled").forEach(i => i.addEventListener("change", apply));
+  document.getElementById("q").addEventListener("input", apply);
+  apply();
+})();
+</script>
+</body>
+</html>

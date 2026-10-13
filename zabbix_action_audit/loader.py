@@ -79,7 +79,7 @@ def fetch_raw(api: ZabbixAPI, *, with_problems: bool = True, action_filter: list
 
     group_key = "hostgroups" if new_groups else "groups"
     hosts = get("host.get", {
-        "output": ["hostid", "host", "name", "status"],
+        "output": ["hostid", "host", "name", "status", "maintenance_status"],
         "selectHostGroups" if new_groups else "selectGroups": ["groupid"],
         "selectParentTemplates": ["templateid"],
         "selectTags": ["tag", "value"],
@@ -87,6 +87,7 @@ def fetch_raw(api: ZabbixAPI, *, with_problems: bool = True, action_filter: list
     }, "hostids", hostids)
     raw["hosts"] = [{
         "hostid": h["hostid"], "host": h["host"], "name": h.get("name", ""), "status": h["status"],
+        "maintenance": h.get("maintenance_status"),
         "groupids": [g["groupid"] for g in h.get(group_key, [])],
         "templateids": [t["templateid"] for t in h.get("parentTemplates", [])],
         "tags": h.get("tags", []), "inheritedTags": h.get("inheritedTags", []),

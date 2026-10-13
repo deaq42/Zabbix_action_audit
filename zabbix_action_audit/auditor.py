@@ -33,6 +33,7 @@ LEVELS = {
     "ACTION_DISABLED": INFO,
     "ACTION_NO_SEND_OPS": INFO,
     "ACTION_PAUSE_SUPPRESSED": INFO,
+    "ACTION_COND_NOT_SUPPRESSED": WARN,
     "ACTION_MATCHES_NOTHING": WARN,
     "ACTION_ONLY_UNDECIDED": WARN,
     "ACTION_NO_PROBLEMS": INFO,
@@ -323,6 +324,14 @@ class Auditor:
         if action.pause_suppressed:
             report.findings.append(finding("ACTION_PAUSE_SUPPRESSED",
                                            "Эскалация приостанавливается для подавленных проблем (обслуживание)"))
+        if any(c.conditiontype == C.COND_SUPPRESSED and c.operator == C.OP_NO for c in action.conditions):
+            report.findings.append(finding(
+                "ACTION_COND_NOT_SUPPRESSED",
+                "Условие «Проблема подавлена: нет» проверяется только в момент возникновения проблемы: "
+                "о проблеме, начавшейся во время обслуживания, не придёт ни одного уведомления, даже если она "
+                "останется после его окончания. Лучше убрать условие и включить на вкладке «Операции» паузу "
+                "для подавленных проблем (Pause operations for suppressed problems)"
+                + (" — она уже включена, условие лишнее" if action.pause_suppressed else "")))
         report.findings += self._missing_refs(action)
         formula_ok = True
         if action.evaltype == C.EVALTYPE_FORMULA:

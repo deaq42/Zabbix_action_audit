@@ -163,3 +163,45 @@ def test_candidates_limited_to_referenced():
     assert t_other not in render_html(res)
     res = run(b, action_filter=["Main"], uncovered=True)
     assert set(res.uncovered["active"]) <= set(res.candidates["active"])
+
+
+def test_not_suppressed_condition_warns():
+    b = RawBuilder()
+    h = b.host("srv", [b.group("G")])
+    b.trigger([h], "a")
+    b.action("cond", [(C.COND_SUPPRESSED, C.OP_NO, "")])
+    res = Auditor(Snapshot(b.build())).run(["potential"])
+    f = next(f for f in res.actions[0].findings if f.code == "ACTION_COND_NOT_SUPPRESSED")
+    assert f.level == "WARN"
+    assert res.actions[0].modes["potential"].matched and not res.actions[0].modes["potential"].undecided
+
+
+def test_cli_split(tmp_path, capsys):
+    b, i = scenario()
+    other = b.host("unrelated", [b.group("Other")])
+    t_other = b.trigger([other], "Unrelated trigger", priority=3)
+    raw = b.build()
+    raw["actions"] = [a for a in raw["actions"] if a["name"] != "Nobody"]  # it would cover every trigger
+    snap = tmp_path / "s.json"
+    snap.write_text(json.dumps(raw))
+    out = tmp_path / "rep"
+    assert main(["--from-snapshot", str(snap), "--split", "-o", str(out), "--uncovered"]) == 1
+    names = {p.name for p in out.iterdir()}
+    assert names == {"index.html", "uncovered.html"} | {f"action-{a['actionid']}.html" for a in raw["actions"]}
+    index = (out / "index.html").read_text()
+    main_id = next(a["actionid"] for a in raw["actions"] if a["name"] == "Main")
+    assert f'href="action-{main_id}.html"' in index and "USER_NO_HOST_ACCESS" in index
+    page = (out / f"action-{main_id}.html").read_text()
+    assert i["t_hi"] in page and t_other not in page  # each page carries only its own candidates
+    assert t_other in (out / "uncovered.html").read_text()
+    assert main(["--from-snapshot", str(snap), "--split"]) == 2  # needs a directory
+
+
+def test_undecided_notes_stored_once():
+    b = RawBuilder()
+    h = b.host("srv", [b.group("G")])
+    for n in range(20):
+        b.trigger([h], f"t{n}")
+    b.action("period", [(C.COND_TIME_PERIOD, C.OP_IN, "1-5,09:00-18:00")])
+    html = render_html(Auditor(Snapshot(b.build())).run(["potential"]))
+    assert html.count("зависит от времени возникновения проблемы") == 1

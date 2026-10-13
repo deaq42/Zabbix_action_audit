@@ -73,6 +73,7 @@ class Host:
     templateids: list[str]  # directly linked templates
     tags: tuple[Tag, ...]
     inherited_tags: tuple[Tag, ...]
+    in_maintenance: bool | None = None  # None: unknown (snapshot made by an older version)
 
 
 @dataclass
@@ -294,7 +295,8 @@ def _action(a: dict) -> Action:
 def _host(h: dict) -> Host:
     return Host(h["hostid"], h.get("host", ""), h.get("name") or h.get("host", ""), str(h.get("status", "0")) == "0",
                 list(h.get("groupids", [])), list(h.get("templateids", [])), _tags(h.get("tags")),
-                _tags(h.get("inheritedTags")))
+                _tags(h.get("inheritedTags")),
+                None if h.get("maintenance") is None else str(h["maintenance"]) == "1")
 
 
 def _template(t: dict) -> Template:

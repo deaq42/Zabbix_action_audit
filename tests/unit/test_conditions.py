@@ -168,9 +168,26 @@ def test_and_or_evaltype_groups_same_types(env):
 
 def test_unknown_propagates_through_kleene_logic(env):
     b, ids = env
-    conds = [(C.COND_SUPPRESSED, C.OP_NO, ""), (C.COND_HOST, C.OP_EQUAL, ids["h1"])]
+    conds = [(C.COND_SUPPRESSED, C.OP_YES, ""), (C.COND_HOST, C.OP_EQUAL, ids["h1"])]
     assert evaluate(b, ids, conds, evaltype=C.EVALTYPE_AND) == {ids["trig_inh"]: None, ids["trig_plain"]: False}
     assert evaluate(b, ids, conds, evaltype=C.EVALTYPE_OR) == {ids["trig_inh"]: True, ids["trig_plain"]: None}
+
+
+def test_not_suppressed_decided_by_current_maintenance():
+    b = RawBuilder()
+    g = b.group("G")
+    t_ok = b.trigger([b.host("normal", [g])], "a")
+    t_maint = b.trigger([b.host("maint", [g], maintenance=True)], "b")
+    assert evaluate(b, {}, [(C.COND_SUPPRESSED, C.OP_NO, "")]) == {t_ok: True, t_maint: None}
+    assert evaluate(b, {}, [(C.COND_SUPPRESSED, C.OP_YES, "")]) == {t_ok: None, t_maint: None}
+
+
+def test_not_suppressed_unknown_without_maintenance_data():
+    b = RawBuilder()
+    t = b.trigger([b.host("old", [b.group("G")])], "a")
+    for h in b.raw["hosts"]:
+        del h["maintenance"]  # snapshot made by an older version
+    assert evaluate(b, {}, [(C.COND_SUPPRESSED, C.OP_NO, "")]) == {t: None}
 
 
 def test_no_conditions_match_everything(env):

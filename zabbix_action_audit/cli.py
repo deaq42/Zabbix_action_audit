@@ -14,7 +14,7 @@ from .api import ZabbixAPI
 from .auditor import Auditor
 from .conditions import MODE_ACTIVE, MODE_POTENTIAL
 from .model import Snapshot
-from .report import RENDERERS
+from .report import RENDERERS, render_html_split
 
 log = logging.getLogger("zabbix_action_audit")
 
@@ -57,7 +57,10 @@ def build_parser() -> argparse.ArgumentParser:
     out = p.add_argument_group("отчёт")
     out.add_argument("--format", choices=sorted(RENDERERS), default=None,
                      help="text, json или html (по умолчанию html при --output *.html, иначе text)")
-    out.add_argument("-o", "--output", help="файл отчёта (по умолчанию stdout)")
+    out.add_argument("-o", "--output", help="файл отчёта (по умолчанию stdout); с --split — каталог")
+    out.add_argument("--split", action="store_true",
+                     help="HTML по странице на действие плюс index.html в каталоге -o; для полного аудита "
+                          "крупной инсталляции")
     p.add_argument("-v", "--verbose", action="count", default=0,
                    help="-v — ход загрузки (хосты, триггеры, порции), -vv — каждый запрос к API с временем и размером")
     return p
@@ -78,6 +81,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def run(args: argparse.Namespace) -> int:
+    if args.split and (not args.output or args.format not in (None, "html")):
+        raise ValueError("--split пишет HTML-страницы в каталог: укажите -o КАТАЛОГ и не указывайте --format")
     modes = [MODE_POTENTIAL, MODE_ACTIVE] if args.mode == "both" else [args.mode]
     if args.from_snapshot:
         raw = loader.load(args.from_snapshot)
@@ -99,6 +104,16 @@ def run(args: argparse.Namespace) -> int:
                                                uncovered=args.uncovered)
     if args.action and not result.actions:
         raise ValueError("Не найдено действий по фильтру --action: " + ", ".join(args.action))
+
+    if args.split:
+        out = Path(args.output)
+        out.mkdir(parents=True, exist_ok=True)
+        files = render_html_split(result)
+        for name, page in files.items():
+            (out / name).write_text(page, encoding="utf-8")
+        print(f"Отчёт: {out / 'index.html'}  ({len(files)} стр., FAIL={result.count('FAIL')}, "
+              f"WARN={result.count('WARN')})", file=sys.stderr)
+        return 1 if result.count("FAIL") else 0
 
     fmt = args.format or ("html" if args.output and args.output.endswith(".html") else
                           "json" if args.output and args.output.endswith(".json") else "text")
